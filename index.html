@@ -1095,7 +1095,12 @@
 
         <!-- History Tab -->
         <div id="history" class="tab-content">
-            <h2 style="margin-bottom: 30px; text-align: center; color: #333;">Match History</h2>
+            <h2 style="margin-bottom: 20px; text-align: center; color: #333;">Match History</h2>
+            
+            <!-- Team Leaderboard Section -->
+            <div id="teamLeaderboard" style="margin-bottom: 30px;"></div>
+            
+            <h3 style="margin: 30px 0 15px 0; color: #333; text-align: center;">All Matches</h3>
             <div id="matchHistory" class="match-list"></div>
         </div>
     </div>
@@ -1252,8 +1257,8 @@
                     displayMatchHistory();
                 }
 
-                // Load current match
-                const currentData = await window.storage.get('currentMatch', false);
+                // Load current match (shared so team can see live scoring)
+                const currentData = await window.storage.get('currentMatch', true);
                 if (currentData) {
                     currentMatch = JSON.parse(currentData.value);
                     if (currentMatch.team1) allTeams.add(currentMatch.team1);
@@ -1377,7 +1382,8 @@
 
         async function saveCurrentMatch() {
             try {
-                await window.storage.set('currentMatch', JSON.stringify(currentMatch), false);
+                // Changed to shared: true so team members can watch live scoring
+                await window.storage.set('currentMatch', JSON.stringify(currentMatch), true);
                 showSaveIndicator();
             } catch (error) {
                 console.error('Error saving match:', error);
@@ -2742,7 +2748,7 @@
             await saveMatchHistory();
 
             try {
-                await window.storage.delete('currentMatch', false);
+                await window.storage.delete('currentMatch', true);
             } catch (error) {
                 console.log('No current match to delete');
             }
@@ -3315,6 +3321,78 @@
             closePlayerModal();
         }
 
+        function displayTeamLeaderboard() {
+            const leaderboardDiv = document.getElementById('teamLeaderboard');
+            
+            if (Object.keys(playerStats).length === 0) {
+                leaderboardDiv.innerHTML = '';
+                return;
+            }
+
+            // Get top batsmen and bowlers
+            const allPlayers = Object.entries(playerStats).map(([key, stats]) => ({
+                name: key,
+                ...stats
+            }));
+
+            // Top 5 batsmen by runs
+            const topBatsmen = allPlayers
+                .filter(p => p.batting && p.batting.runs > 0)
+                .sort((a, b) => b.batting.runs - a.batting.runs)
+                .slice(0, 5);
+
+            // Top 5 bowlers by wickets
+            const topBowlers = allPlayers
+                .filter(p => p.bowling && p.bowling.wickets > 0)
+                .sort((a, b) => b.bowling.wickets - a.bowling.wickets)
+                .slice(0, 5);
+
+            leaderboardDiv.innerHTML = `
+                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; border-radius: 15px; color: white; margin-bottom: 20px;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 1.3em;">🏆 Team Leaderboard</h3>
+                    <p style="margin: 0; opacity: 0.9; font-size: 0.9em;">All-time top performers</p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px;">
+                    <div style="background: #f8f9fa; border-radius: 12px; padding: 15px;">
+                        <h4 style="margin: 0 0 12px 0; color: #667eea; display: flex; align-items: center; gap: 8px;">
+                            <span>🏏</span> Top Batsmen
+                        </h4>
+                        ${topBatsmen.length > 0 ? topBatsmen.map((p, i) => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: ${i < topBatsmen.length - 1 ? '1px solid #dee2e6' : 'none'};">
+                                <div>
+                                    <div style="font-weight: 600; font-size: 0.95em;">${i + 1}. ${p.name}</div>
+                                    <div style="font-size: 0.8em; color: #666;">${p.batting.innings} innings</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-weight: bold; color: #667eea; font-size: 1.1em;">${p.batting.runs}</div>
+                                    <div style="font-size: 0.8em; color: #666;">runs</div>
+                                </div>
+                            </div>
+                        `).join('') : '<p style="color: #999; text-align: center; padding: 10px;">No data yet</p>'}
+                    </div>
+
+                    <div style="background: #f8f9fa; border-radius: 12px; padding: 15px;">
+                        <h4 style="margin: 0 0 12px 0; color: #f5576c; display: flex; align-items: center; gap: 8px;">
+                            <span>🎯</span> Top Bowlers
+                        </h4>
+                        ${topBowlers.length > 0 ? topBowlers.map((p, i) => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: ${i < topBowlers.length - 1 ? '1px solid #dee2e6' : 'none'};">
+                                <div>
+                                    <div style="font-weight: 600; font-size: 0.95em;">${i + 1}. ${p.name}</div>
+                                    <div style="font-size: 0.8em; color: #666;">${p.bowling.innings} innings</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-weight: bold; color: #f5576c; font-size: 1.1em;">${p.bowling.wickets}</div>
+                                    <div style="font-size: 0.8em; color: #666;">wickets</div>
+                                </div>
+                            </div>
+                        `).join('') : '<p style="color: #999; text-align: center; padding: 10px;">No data yet</p>'}
+                    </div>
+                </div>
+            `;
+        }
+
         async function displayMatchHistory() {
             try {
                 const historyData = await window.storage.get('matchHistory', true);
@@ -3324,6 +3402,9 @@
             } catch (error) {
                 console.log('No match history found');
             }
+
+            // Display team leaderboard
+            displayTeamLeaderboard();
 
             const historyDiv = document.getElementById('matchHistory');
             
