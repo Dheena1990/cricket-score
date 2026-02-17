@@ -987,13 +987,18 @@
                 <div style="font-size: 4em; margin-bottom: 20px;">🏏</div>
                 <h2>No Active Match</h2>
                 <p>Start a new match to begin scoring</p>
+                <div style="margin-top: 25px; padding: 15px; background: #e8f4f8; border-radius: 10px; font-size: 0.9em; color: #666; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto;">
+                    <strong style="color: #667eea;">💡 Team Sync:</strong>
+                    <p style="margin: 8px 0 0 0;">If someone else starts a match, it will appear here automatically. Updates every 5 seconds, or click <strong>🔄 Refresh</strong> button above.</p>
+                </div>
             </div>
 
             <div id="scoringInterface" style="display: none;">
                 <!-- Sub-navigation for live scoring -->
-                <div style="display: flex; background: #f8f9fa; border-bottom: 2px solid #dee2e6; margin-bottom: 20px;">
+                <div style="display: flex; background: #f8f9fa; border-bottom: 2px solid #dee2e6; margin-bottom: 20px; align-items: center;">
                     <button class="scoring-sub-tab active" onclick="switchScoringTab('live')" id="liveSubTab" style="flex: 1; padding: 12px; border: none; background: white; font-weight: 600; border-bottom: 3px solid #667eea; cursor: pointer;">Live</button>
                     <button class="scoring-sub-tab" onclick="switchScoringTab('scorecard')" id="scorecardSubTab" style="flex: 1; padding: 12px; border: none; background: #f8f9fa; font-weight: 600; cursor: pointer;">Scorecard</button>
+                    <button onclick="manualRefresh()" style="padding: 8px 15px; margin-right: 10px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9em;">🔄 Refresh</button>
                 </div>
 
                 <!-- Live Scoring View -->
@@ -1350,6 +1355,81 @@
                     console.log('Auto-saved match at', new Date().toLocaleTimeString());
                 }
             }, 30000);
+
+            // Auto-refresh: Check for updates every 5 seconds
+            setInterval(async () => {
+                try {
+                    // Check if there's a shared match we should be showing
+                    const sharedMatch = await window.storage.get('currentMatch', true);
+                    
+                    if (sharedMatch) {
+                        const sharedMatchData = JSON.parse(sharedMatch.value);
+                        
+                        // If we don't have a current match, or the shared match is different, load it
+                        if (!currentMatch || currentMatch.id !== sharedMatchData.id || 
+                            currentMatch.balls !== sharedMatchData.balls) {
+                            
+                            console.log('🔄 Live match update detected - refreshing...');
+                            
+                            // Load the shared match
+                            currentMatch = sharedMatchData;
+                            
+                            // Restore dismissed batsmen
+                            dismissedBatsmen = [];
+                            if (currentMatch.ballHistory) {
+                                currentMatch.ballHistory.forEach(ball => {
+                                    if (ball.type === 'wicket' && ball.striker) {
+                                        if (!dismissedBatsmen.includes(ball.striker.name)) {
+                                            dismissedBatsmen.push(ball.striker.name);
+                                        }
+                                    }
+                                });
+                            }
+                            
+                            // Update display if on live tab
+                            const liveTab = document.getElementById('live');
+                            if (liveTab && liveTab.classList.contains('active')) {
+                                displayLiveMatch();
+                                
+                                // Show update indicator
+                                const indicator = document.getElementById('saveIndicator');
+                                if (indicator) {
+                                    indicator.textContent = '🔄 Updated';
+                                    indicator.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                                    indicator.style.opacity = '1';
+                                    setTimeout(() => {
+                                        indicator.textContent = '✓ Saved';
+                                        indicator.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+                                        indicator.style.opacity = '0';
+                                    }, 2000);
+                                }
+                            }
+                        }
+                    } else if (currentMatch) {
+                        // Shared match was deleted (match ended), but we still have it locally
+                        console.log('Match ended by another user');
+                        currentMatch = null;
+                        dismissedBatsmen = [];
+                        displayLiveMatch();
+                    }
+                    
+                    // Also refresh match history if on that tab
+                    const historyTab = document.getElementById('history');
+                    if (historyTab && historyTab.classList.contains('active')) {
+                        const historyData = await window.storage.get('matchHistory', true);
+                        if (historyData) {
+                            const newHistory = JSON.parse(historyData.value);
+                            if (newHistory.length !== matchHistory.length) {
+                                matchHistory = newHistory;
+                                displayMatchHistory();
+                            }
+                        }
+                    }
+                } catch (error) {
+                    // Silently fail - might not have internet connection
+                    console.log('Auto-refresh check failed:', error);
+                }
+            }, 5000); // Check every 5 seconds
         }
 
         function updateTossOptions() {
@@ -1397,6 +1477,69 @@
                 setTimeout(() => {
                     indicator.style.opacity = '0';
                 }, 1500);
+            }
+        }
+
+        async function manualRefresh() {
+            const btn = event.target;
+            btn.textContent = '🔄 Refreshing...';
+            btn.disabled = true;
+            
+            try {
+                // Reload current match
+                const sharedMatch = await window.storage.get('currentMatch', true);
+                if (sharedMatch) {
+                    currentMatch = JSON.parse(sharedMatch.value);
+                    
+                    // Restore dismissed batsmen
+                    dismissedBatsmen = [];
+                    if (currentMatch.ballHistory) {
+                        currentMatch.ballHistory.forEach(ball => {
+                            if (ball.type === 'wicket' && ball.striker) {
+                                if (!dismissedBatsmen.includes(ball.striker.name)) {
+                                    dismissedBatsmen.push(ball.striker.name);
+                                }
+                            }
+                        });
+                    }
+                    
+                    displayLiveMatch();
+                    
+                    // Show success
+                    const indicator = document.getElementById('saveIndicator');
+                    if (indicator) {
+                        indicator.textContent = '✅ Refreshed';
+                        indicator.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+                        indicator.style.opacity = '1';
+                        setTimeout(() => {
+                            indicator.textContent = '✓ Saved';
+                            indicator.style.opacity = '0';
+                        }, 2000);
+                    }
+                } else {
+                    // No active match
+                    currentMatch = null;
+                    dismissedBatsmen = [];
+                    displayLiveMatch();
+                }
+                
+                // Reload match history
+                const historyData = await window.storage.get('matchHistory', true);
+                if (historyData) {
+                    matchHistory = JSON.parse(historyData.value);
+                }
+                
+                // Reload player stats
+                const statsData = await window.storage.get('playerStats', true);
+                if (statsData) {
+                    playerStats = JSON.parse(statsData.value);
+                }
+                
+            } catch (error) {
+                showCustomAlert('Refresh Failed', 'Could not refresh data. Please check your internet connection.', '⚠️', 'warning');
+            } finally {
+                btn.textContent = '🔄 Refresh';
+                btn.disabled = false;
             }
         }
 
