@@ -1250,13 +1250,13 @@
         // TODO: Replace with your Firebase config
         // Get this from Firebase Console > Project Settings > Your Apps
         const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-            databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT_ID.appspot.com",
-            messagingSenderId: "YOUR_SENDER_ID",
-            appId: "YOUR_APP_ID"
+            apiKey: "AIzaSyBNLmPB0YqkJq3Keu5Z73u7xovhKukd_p4",
+            authDomain: "cricket-score-fb4d9.firebaseapp.com",
+            databaseURL: "https://cricket-score-fb4d9-default-rtdb.firebaseio.com",
+            projectId: "cricket-score-fb4d9",
+            storageBucket: "cricket-score-fb4d9.firebasestorage.app",
+            messagingSenderId: "825000046713",
+            appId: "1:825000046713:web:17af64ebd930449d47e4a8"
         };
 
         // Initialize Firebase
@@ -1662,64 +1662,7 @@
                     }
                 });
 
-                // Listen for players changes in real-time
-                storage.onChange('players', (data) => {
-                    if (data) {
-                        try {
-                            const newPlayers = JSON.parse(data);
-                            console.log('⚡ Players updated (real-time)');
-                            players = newPlayers;
-                            
-                            // Refresh player displays if on Players tab
-                            const playersTab = document.getElementById('players');
-                            if (playersTab && playersTab.classList.contains('active')) {
-                                displayPlayerRoster();
-                            }
-                        } catch (error) {
-                            console.error('Error processing players update:', error);
-                        }
-                    }
-                });
-
-                // Listen for playerStats changes in real-time
-                storage.onChange('playerStats', (data) => {
-                    if (data) {
-                        try {
-                            const newStats = JSON.parse(data);
-                            console.log('⚡ Player stats updated (real-time)');
-                            playerStats = newStats;
-                            
-                            // Refresh displays if on Players tab
-                            const playersTab = document.getElementById('players');
-                            if (playersTab && playersTab.classList.contains('active')) {
-                                displayPlayerRoster();
-                            }
-                        } catch (error) {
-                            console.error('Error processing stats update:', error);
-                        }
-                    }
-                });
-
-                // Listen for matchHistory changes in real-time
-                storage.onChange('matchHistory', (data) => {
-                    if (data) {
-                        try {
-                            const newHistory = JSON.parse(data);
-                            console.log('⚡ Match history updated (real-time)');
-                            matchHistory = newHistory;
-                            
-                            // Refresh if on History tab
-                            const historyTab = document.getElementById('history');
-                            if (historyTab && historyTab.classList.contains('active')) {
-                                displayMatchHistory();
-                            }
-                        } catch (error) {
-                            console.error('Error processing history update:', error);
-                        }
-                    }
-                });
-
-                console.log('✅ Real-time listeners activated for: currentMatch, players, playerStats, matchHistory');
+                console.log('✅ Real-time listeners activated');
             }
         }
 
