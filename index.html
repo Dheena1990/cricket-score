@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Cricket Scorer Pro</title>
+    
+    <!-- Firebase SDK - Latest Version -->
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -983,13 +988,20 @@
 
         <!-- Live Scoring Tab -->
         <div id="live" class="tab-content">
+            <!-- Always-visible refresh button -->
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 15px;">
+                <button onclick="manualRefresh()" style="padding: 10px 20px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 10px; font-weight: 600; cursor: pointer; font-size: 0.95em; display: flex; align-items: center; gap: 8px; transition: all 0.3s;">
+                    <span style="font-size: 1.1em;">🔄</span> Refresh Match
+                </button>
+            </div>
+
             <div id="noMatchMessage" class="empty-state">
                 <div style="font-size: 4em; margin-bottom: 20px;">🏏</div>
                 <h2>No Active Match</h2>
                 <p>Start a new match to begin scoring</p>
                 <div style="margin-top: 25px; padding: 15px; background: #e8f4f8; border-radius: 10px; font-size: 0.9em; color: #666; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto;">
                     <strong style="color: #667eea;">💡 Team Sync:</strong>
-                    <p style="margin: 8px 0 0 0;">If someone else starts a match, it will appear here automatically. Updates every 5 seconds, or click <strong>🔄 Refresh</strong> button above.</p>
+                    <p style="margin: 8px 0 0 0;">If someone else starts a match, it will appear here automatically. Updates every 5 seconds, or click <strong>🔄 Refresh Match</strong> button above.</p>
                 </div>
             </div>
 
@@ -998,7 +1010,6 @@
                 <div style="display: flex; background: #f8f9fa; border-bottom: 2px solid #dee2e6; margin-bottom: 20px; align-items: center;">
                     <button class="scoring-sub-tab active" onclick="switchScoringTab('live')" id="liveSubTab" style="flex: 1; padding: 12px; border: none; background: white; font-weight: 600; border-bottom: 3px solid #667eea; cursor: pointer;">Live</button>
                     <button class="scoring-sub-tab" onclick="switchScoringTab('scorecard')" id="scorecardSubTab" style="flex: 1; padding: 12px; border: none; background: #f8f9fa; font-weight: 600; cursor: pointer;">Scorecard</button>
-                    <button onclick="manualRefresh()" style="padding: 8px 15px; margin-right: 10px; border: 2px solid #667eea; background: white; color: #667eea; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9em;">🔄 Refresh</button>
                 </div>
 
                 <!-- Live Scoring View -->
@@ -1233,6 +1244,159 @@
     </div>
 
     <script>
+        // ============================================
+        // FIREBASE CONFIGURATION
+        // ============================================
+        // TODO: Replace with your Firebase config
+        // Get this from Firebase Console > Project Settings > Your Apps
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Initialize Firebase
+        let database;
+        let firebaseInitialized = false;
+        let firebaseRetryCount = 0;
+        const MAX_FIREBASE_RETRIES = 10; // Max 5 seconds (10 * 500ms)
+
+        function initializeFirebase() {
+            // Check if Firebase is loaded
+            if (typeof firebase === 'undefined') {
+                firebaseRetryCount++;
+                
+                if (firebaseRetryCount >= MAX_FIREBASE_RETRIES) {
+                    console.warn('⚠️ Firebase SDK failed to load after 5 seconds. Using localStorage fallback.');
+                    console.log('💡 App will work locally but won\'t sync across devices.');
+                    firebaseInitialized = false; // Stay false to use localStorage
+                    return;
+                }
+                
+                console.log(`⏳ Firebase SDK loading... retry ${firebaseRetryCount}/${MAX_FIREBASE_RETRIES}`);
+                setTimeout(initializeFirebase, 500);
+                return;
+            }
+
+            try {
+                firebase.initializeApp(firebaseConfig);
+                database = firebase.database();
+                firebaseInitialized = true;
+                console.log('✅ Firebase initialized successfully - Team sync enabled!');
+            } catch (error) {
+                console.error('❌ Firebase initialization failed:', error);
+                
+                // Check if config is still using placeholders
+                if (firebaseConfig.apiKey === "YOUR_API_KEY") {
+                    console.warn('⚠️ Firebase config not set. Using localStorage fallback.');
+                    console.log('💡 To enable team sync, add your Firebase config.');
+                } else {
+                    console.error('Firebase config error:', error.message);
+                    console.log('💡 Using localStorage fallback.');
+                }
+                
+                firebaseInitialized = false; // Use localStorage fallback
+            }
+        }
+
+        // Initialize Firebase when script loads
+        initializeFirebase();
+
+        // Update sync status indicator
+        function updateSyncStatus() {
+            const statusDiv = document.getElementById('saveIndicator');
+            if (!statusDiv) return;
+            
+            if (firebaseInitialized) {
+                statusDiv.textContent = '✓ Team Sync ON';
+                statusDiv.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+                console.log('📡 Team sync is ENABLED - Data syncs across all devices');
+            } else {
+                statusDiv.textContent = '💾 Local Mode';
+                statusDiv.style.background = 'linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%)';
+                console.log('💾 Running in LOCAL mode - Data saved only on this device');
+                console.log('💡 To enable team sync, configure Firebase (see console for details)');
+            }
+            
+            // Show status for 3 seconds
+            statusDiv.style.opacity = '1';
+            setTimeout(() => {
+                statusDiv.style.opacity = '0';
+            }, 3000);
+        }
+
+        // Show sync status after a brief delay
+        setTimeout(updateSyncStatus, 1500);
+
+        // ============================================
+        // STORAGE ADAPTER (Firebase wrapper)
+        // ============================================
+        const storage = {
+            async set(key, value) {
+                if (!firebaseInitialized) {
+                    console.warn('Firebase not initialized, using localStorage fallback');
+                    localStorage.setItem(key, value);
+                    return { key, value };
+                }
+                try {
+                    await database.ref(key).set(value);
+                    return { key, value };
+                } catch (error) {
+                    console.error('Firebase set error:', error);
+                    // Fallback to localStorage
+                    localStorage.setItem(key, value);
+                    return { key, value };
+                }
+            },
+
+            async get(key) {
+                if (!firebaseInitialized) {
+                    const value = localStorage.getItem(key);
+                    return value ? { key, value } : null;
+                }
+                try {
+                    const snapshot = await database.ref(key).once('value');
+                    const value = snapshot.val();
+                    return value ? { key, value } : null;
+                } catch (error) {
+                    console.error('Firebase get error:', error);
+                    // Fallback to localStorage
+                    const value = localStorage.getItem(key);
+                    return value ? { key, value } : null;
+                }
+            },
+
+            async delete(key) {
+                if (!firebaseInitialized) {
+                    localStorage.removeItem(key);
+                    return { key, deleted: true };
+                }
+                try {
+                    await database.ref(key).remove();
+                    return { key, deleted: true };
+                } catch (error) {
+                    console.error('Firebase delete error:', error);
+                    localStorage.removeItem(key);
+                    return { key, deleted: true };
+                }
+            },
+
+            // Listen for real-time changes
+            onChange(key, callback) {
+                if (!firebaseInitialized) return;
+                database.ref(key).on('value', (snapshot) => {
+                    callback(snapshot.val());
+                });
+            }
+        };
+
+        // ============================================
+        // APP CODE
+        // ============================================
         let currentMatch = null;
         let matchHistory = [];
         let players = []; // Array of {name, team} objects
@@ -1246,12 +1410,15 @@
 
         // Initialize
         async function init() {
+            // Give Firebase a moment to initialize, but don't block
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
             try {
                 const dateInput = document.getElementById('matchDate');
                 dateInput.valueAsDate = new Date();
 
                 // Load match history
-                const historyData = await window.storage.get('matchHistory', true);
+                const historyData = await storage.get('matchHistory');
                 if (historyData) {
                     matchHistory = JSON.parse(historyData.value);
                     // Extract unique team names from match history
@@ -1263,7 +1430,7 @@
                 }
 
                 // Load current match (shared so team can see live scoring)
-                const currentData = await window.storage.get('currentMatch', true);
+                const currentData = await storage.get('currentMatch');
                 if (currentData) {
                     currentMatch = JSON.parse(currentData.value);
                     if (currentMatch.team1) allTeams.add(currentMatch.team1);
@@ -1296,7 +1463,7 @@
                 }
 
                 // Load players
-                const playersData = await window.storage.get('players', true);
+                const playersData = await storage.get('players');
                 if (playersData) {
                     players = JSON.parse(playersData.value);
                     // For backwards compatibility, convert old string array to object array
@@ -1306,13 +1473,13 @@
                 }
 
                 // Load player stats
-                const statsData = await window.storage.get('playerStats', true);
+                const statsData = await storage.get('playerStats');
                 if (statsData) {
                     playerStats = JSON.parse(statsData.value);
                 }
 
                 // Load teams
-                const teamsData = await window.storage.get('allTeams', true);
+                const teamsData = await storage.get('allTeams');
                 if (teamsData) {
                     const teamsArray = JSON.parse(teamsData.value);
                     allTeams = new Set(teamsArray);
@@ -1360,7 +1527,7 @@
             setInterval(async () => {
                 try {
                     // Check if there's a shared match we should be showing
-                    const sharedMatch = await window.storage.get('currentMatch', true);
+                    const sharedMatch = await storage.get('currentMatch');
                     
                     if (sharedMatch) {
                         const sharedMatchData = JSON.parse(sharedMatch.value);
@@ -1416,7 +1583,7 @@
                     // Also refresh match history if on that tab
                     const historyTab = document.getElementById('history');
                     if (historyTab && historyTab.classList.contains('active')) {
-                        const historyData = await window.storage.get('matchHistory', true);
+                        const historyData = await storage.get('matchHistory');
                         if (historyData) {
                             const newHistory = JSON.parse(historyData.value);
                             if (newHistory.length !== matchHistory.length) {
@@ -1430,6 +1597,73 @@
                     console.log('Auto-refresh check failed:', error);
                 }
             }, 5000); // Check every 5 seconds
+
+            // ============================================
+            // FIREBASE REAL-TIME LISTENERS
+            // ============================================
+            // Listen for currentMatch changes in real-time (instant updates)
+            if (firebaseInitialized) {
+                storage.onChange('currentMatch', (data) => {
+                    if (!data) {
+                        // Match was deleted
+                        if (currentMatch) {
+                            console.log('🔴 Match ended (real-time)');
+                            currentMatch = null;
+                            dismissedBatsmen = [];
+                            displayLiveMatch();
+                        }
+                        return;
+                    }
+
+                    try {
+                        const newMatchData = JSON.parse(data);
+                        
+                        // Check if this is a different match or has updates
+                        if (!currentMatch || currentMatch.id !== newMatchData.id || 
+                            currentMatch.balls !== newMatchData.balls) {
+                            
+                            console.log('⚡ Real-time update received');
+                            
+                            currentMatch = newMatchData;
+                            
+                            // Restore dismissed batsmen
+                            dismissedBatsmen = [];
+                            if (currentMatch.ballHistory) {
+                                currentMatch.ballHistory.forEach(ball => {
+                                    if (ball.type === 'wicket' && ball.striker) {
+                                        if (!dismissedBatsmen.includes(ball.striker.name)) {
+                                            dismissedBatsmen.push(ball.striker.name);
+                                        }
+                                    }
+                                });
+                            }
+                            
+                            // Update display if on live tab
+                            const liveTab = document.getElementById('live');
+                            if (liveTab && liveTab.classList.contains('active')) {
+                                displayLiveMatch();
+                                
+                                // Show real-time indicator
+                                const indicator = document.getElementById('saveIndicator');
+                                if (indicator) {
+                                    indicator.textContent = '⚡ Live';
+                                    indicator.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
+                                    indicator.style.opacity = '1';
+                                    setTimeout(() => {
+                                        indicator.textContent = '✓ Saved';
+                                        indicator.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
+                                        indicator.style.opacity = '0';
+                                    }, 2000);
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error processing real-time update:', error);
+                    }
+                });
+
+                console.log('✅ Real-time listeners activated');
+            }
         }
 
         function updateTossOptions() {
@@ -1462,8 +1696,7 @@
 
         async function saveCurrentMatch() {
             try {
-                // Changed to shared: true so team members can watch live scoring
-                await window.storage.set('currentMatch', JSON.stringify(currentMatch), true);
+                await storage.set('currentMatch', JSON.stringify(currentMatch));
                 showSaveIndicator();
             } catch (error) {
                 console.error('Error saving match:', error);
@@ -1487,7 +1720,7 @@
             
             try {
                 // Reload current match
-                const sharedMatch = await window.storage.get('currentMatch', true);
+                const sharedMatch = await storage.get('currentMatch');
                 if (sharedMatch) {
                     currentMatch = JSON.parse(sharedMatch.value);
                     
@@ -1524,13 +1757,13 @@
                 }
                 
                 // Reload match history
-                const historyData = await window.storage.get('matchHistory', true);
+                const historyData = await storage.get('matchHistory');
                 if (historyData) {
                     matchHistory = JSON.parse(historyData.value);
                 }
                 
                 // Reload player stats
-                const statsData = await window.storage.get('playerStats', true);
+                const statsData = await storage.get('playerStats');
                 if (statsData) {
                     playerStats = JSON.parse(statsData.value);
                 }
@@ -1545,7 +1778,7 @@
 
         async function savePlayers() {
             try {
-                await window.storage.set('players', JSON.stringify(players), true);
+                await storage.set('players', JSON.stringify(players));
             } catch (error) {
                 console.error('Error saving players:', error);
             }
@@ -1553,7 +1786,7 @@
 
         async function savePlayerStats() {
             try {
-                await window.storage.set('playerStats', JSON.stringify(playerStats), true);
+                await storage.set('playerStats', JSON.stringify(playerStats));
             } catch (error) {
                 console.error('Error saving player stats:', error);
             }
@@ -1561,7 +1794,7 @@
 
         async function saveTeams() {
             try {
-                await window.storage.set('allTeams', JSON.stringify([...allTeams]), true);
+                await storage.set('allTeams', JSON.stringify([...allTeams]));
             } catch (error) {
                 console.error('Error saving teams:', error);
             }
@@ -1581,7 +1814,7 @@
 
         async function saveMatchHistory() {
             try {
-                await window.storage.set('matchHistory', JSON.stringify(matchHistory), true);
+                await storage.set('matchHistory', JSON.stringify(matchHistory));
             } catch (error) {
                 console.error('Error saving history:', error);
             }
@@ -2891,7 +3124,7 @@
             await saveMatchHistory();
 
             try {
-                await window.storage.delete('currentMatch', true);
+                await storage.delete('currentMatch');
             } catch (error) {
                 console.log('No current match to delete');
             }
@@ -3538,7 +3771,7 @@
 
         async function displayMatchHistory() {
             try {
-                const historyData = await window.storage.get('matchHistory', true);
+                const historyData = await storage.get('matchHistory');
                 if (historyData) {
                     matchHistory = JSON.parse(historyData.value);
                 }
