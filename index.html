@@ -1250,13 +1250,13 @@
         // TODO: Replace with your Firebase config
         // Get this from Firebase Console > Project Settings > Your Apps
         const firebaseConfig = {
-            apiKey: "AIzaSyBNLmPB0YqkJq3Keu5Z73u7xovhKukd_p4",
-            authDomain: "cricket-score-fb4d9.firebaseapp.com",
-            databaseURL: "https://cricket-score-fb4d9-default-rtdb.firebaseio.com",
-            projectId: "cricket-score-fb4d9",
-            storageBucket: "cricket-score-fb4d9.firebasestorage.app",
-            messagingSenderId: "825000046713",
-            appId: "1:825000046713:web:17af64ebd930449d47e4a8"
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT_ID.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
         };
 
         // Initialize Firebase
@@ -1523,10 +1523,10 @@
                 }
             }, 30000);
 
-            // Auto-refresh: Check for updates every 5 seconds
+            // Auto-refresh: Check for updates every 3 seconds
             setInterval(async () => {
                 try {
-                    // Check if there's a shared match we should be showing
+                    // 1. Check for match updates
                     const sharedMatch = await storage.get('currentMatch');
                     
                     if (sharedMatch) {
@@ -1536,7 +1536,7 @@
                         if (!currentMatch || currentMatch.id !== sharedMatchData.id || 
                             currentMatch.balls !== sharedMatchData.balls) {
                             
-                            console.log('🔄 Live match update detected - refreshing...');
+                            console.log('🔄 Match updated');
                             
                             // Load the shared match
                             currentMatch = sharedMatchData;
@@ -1557,19 +1557,6 @@
                             const liveTab = document.getElementById('live');
                             if (liveTab && liveTab.classList.contains('active')) {
                                 displayLiveMatch();
-                                
-                                // Show update indicator
-                                const indicator = document.getElementById('saveIndicator');
-                                if (indicator) {
-                                    indicator.textContent = '🔄 Updated';
-                                    indicator.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-                                    indicator.style.opacity = '1';
-                                    setTimeout(() => {
-                                        indicator.textContent = '✓ Saved';
-                                        indicator.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
-                                        indicator.style.opacity = '0';
-                                    }, 2000);
-                                }
                             }
                         }
                     } else if (currentMatch) {
@@ -1580,14 +1567,42 @@
                         displayLiveMatch();
                     }
                     
-                    // Also refresh match history if on that tab
-                    const historyTab = document.getElementById('history');
-                    if (historyTab && historyTab.classList.contains('active')) {
-                        const historyData = await storage.get('matchHistory');
-                        if (historyData) {
-                            const newHistory = JSON.parse(historyData.value);
-                            if (newHistory.length !== matchHistory.length) {
-                                matchHistory = newHistory;
+                    // 2. Check for players updates
+                    const playersData = await storage.get('players');
+                    if (playersData) {
+                        const newPlayers = JSON.parse(playersData.value);
+                        const playersChanged = JSON.stringify(newPlayers) !== JSON.stringify(players);
+                        if (playersChanged) {
+                            console.log('🔄 Players updated');
+                            players = newPlayers;
+                            // Refresh player roster if on Players tab
+                            const playersTab = document.getElementById('players');
+                            if (playersTab && playersTab.classList.contains('active')) {
+                                displayPlayerRoster();
+                            }
+                        }
+                    }
+                    
+                    // 3. Check for player stats updates
+                    const statsData = await storage.get('playerStats');
+                    if (statsData) {
+                        const newStats = JSON.parse(statsData.value);
+                        const statsChanged = JSON.stringify(newStats) !== JSON.stringify(playerStats);
+                        if (statsChanged) {
+                            console.log('🔄 Player stats updated');
+                            playerStats = newStats;
+                        }
+                    }
+                    
+                    // 4. Check for match history updates
+                    const historyData = await storage.get('matchHistory');
+                    if (historyData) {
+                        const newHistory = JSON.parse(historyData.value);
+                        if (newHistory.length !== matchHistory.length) {
+                            console.log('🔄 Match history updated');
+                            matchHistory = newHistory;
+                            const historyTab = document.getElementById('history');
+                            if (historyTab && historyTab.classList.contains('active')) {
                                 displayMatchHistory();
                             }
                         }
@@ -1596,75 +1611,10 @@
                     // Silently fail - might not have internet connection
                     console.log('Auto-refresh check failed:', error);
                 }
-            }, 5000); // Check every 5 seconds
+            }, 3000); // Check every 3 seconds
 
-            // ============================================
-            // FIREBASE REAL-TIME LISTENERS
-            // ============================================
-            // Listen for currentMatch changes in real-time (instant updates)
-            if (firebaseInitialized) {
-                storage.onChange('currentMatch', (data) => {
-                    if (!data) {
-                        // Match was deleted
-                        if (currentMatch) {
-                            console.log('🔴 Match ended (real-time)');
-                            currentMatch = null;
-                            dismissedBatsmen = [];
-                            displayLiveMatch();
-                        }
-                        return;
-                    }
-
-                    try {
-                        const newMatchData = JSON.parse(data);
-                        
-                        // Check if this is a different match or has updates
-                        if (!currentMatch || currentMatch.id !== newMatchData.id || 
-                            currentMatch.balls !== newMatchData.balls) {
-                            
-                            console.log('⚡ Real-time update received');
-                            
-                            currentMatch = newMatchData;
-                            
-                            // Restore dismissed batsmen
-                            dismissedBatsmen = [];
-                            if (currentMatch.ballHistory) {
-                                currentMatch.ballHistory.forEach(ball => {
-                                    if (ball.type === 'wicket' && ball.striker) {
-                                        if (!dismissedBatsmen.includes(ball.striker.name)) {
-                                            dismissedBatsmen.push(ball.striker.name);
-                                        }
-                                    }
-                                });
-                            }
-                            
-                            // Update display if on live tab
-                            const liveTab = document.getElementById('live');
-                            if (liveTab && liveTab.classList.contains('active')) {
-                                displayLiveMatch();
-                                
-                                // Show real-time indicator
-                                const indicator = document.getElementById('saveIndicator');
-                                if (indicator) {
-                                    indicator.textContent = '⚡ Live';
-                                    indicator.style.background = 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
-                                    indicator.style.opacity = '1';
-                                    setTimeout(() => {
-                                        indicator.textContent = '✓ Saved';
-                                        indicator.style.background = 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)';
-                                        indicator.style.opacity = '0';
-                                    }, 2000);
-                                }
-                            }
-                        }
-                    } catch (error) {
-                        console.error('Error processing real-time update:', error);
-                    }
-                });
-
-                console.log('✅ Real-time listeners activated');
-            }
         }
+
 
         function updateTossOptions() {
             const team1 = document.getElementById('team1Name').value.trim();
